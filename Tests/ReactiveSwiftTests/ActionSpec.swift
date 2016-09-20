@@ -141,8 +141,12 @@ class ActionSpec: QuickSpec {
 
 		describe("PropertyAction") {
 			it("executes the action with the property's current value") {
+				func producer(_ value: Int) -> SignalProducer<Int, NoError> {
+					return SignalProducer(value: value)
+				}
+
 				let input = MutableProperty(0)
-				let action = PropertyAction<Int, NoError>(input: input) { SignalProducer(value: $0) }
+				let action = Action<Void, Int, NoError>(input: input, producer)
 
 				var values: [Int] = []
 				action.values.observeValues { values.append($0) }
@@ -159,7 +163,7 @@ class ActionSpec: QuickSpec {
 
 			it("is disabled if the property is nil") {
 				let input = MutableProperty<Int?>(1)
-				let action = PropertyAction<Int, NoError>(input: input) { SignalProducer(value: $0) }
+				let action = Action<Void, Int, NoError>(input: input) { SignalProducer(value: $0) }
 
 				expect(action.isEnabled.value) == true
 				input.value = nil

@@ -148,6 +148,8 @@ public protocol ActionProtocol {
 	/// `NoError` can be used.
 	associatedtype Error: Swift.Error
 
+	init<P: PropertyProtocol>(enabledIf property: P, _ execute: @escaping (Input) -> SignalProducer<Output, Error>) where P.Value == Bool
+
 	/// Whether the action is currently enabled.
 	var isEnabled: Property<Bool> { get }
 
@@ -174,39 +176,11 @@ extension Action: ActionProtocol {
 	}
 }
 
-public final class PropertyAction<Output, Error: Swift.Error>: ActionProtocol {
-	public typealias Input = Void
-
-	public let action: Action<Void, Output, Error>
-
-	public var isEnabled: Property<Bool> {
-		return action.isEnabled
-	}
-
+extension ActionProtocol where Input == Void {
 	public init<P: PropertyProtocol, T>(input: P, _ execute: @escaping (T) -> SignalProducer<Output, Error>) where P.Value == T? {
-		action = Action(enabledIf: input.map { $0 != nil }) {
+		self.init(enabledIf: input.map { $0 != nil }) {
 			execute(input.value!)
 		}
-	}
-
-	public convenience init<P: PropertyProtocol, T>(input: P, _ execute: @escaping (T) -> SignalProducer<Output, Error>) where P.Value == T {
-		self.init(input: input.map(Optional.some), execute)
-	}
-
-	public var events: Signal<Event<Output, Error>, NoError> {
-		return action.events
-	}
-
-	public var values: Signal<Output, NoError> {
-		return action.values
-	}
-
-	public var errors: Signal<Error, NoError> {
-		return action.errors
-	}
-
-	public func apply(_ input: Void = ()) -> SignalProducer<Output, ActionError<Error>> {
-		return action.apply()
 	}
 }
 
