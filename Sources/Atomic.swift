@@ -8,7 +8,7 @@
 
 import Foundation
 
-final class PosixThreadMutex: NSLocking {
+internal struct _PosixThreadMutex {
 	private var mutex = pthread_mutex_t()
 
 	init() {
@@ -16,26 +16,63 @@ final class PosixThreadMutex: NSLocking {
 		precondition(result == 0, "Failed to initialize mutex with error \(result).")
 	}
 
-	deinit {
+	mutating func deinitialize() {
 		let result = pthread_mutex_destroy(&mutex)
 		precondition(result == 0, "Failed to destroy mutex with error \(result).")
 	}
 
-	func lock() {
+	@inline(__always)
+	mutating func lock() {
 		let result = pthread_mutex_lock(&mutex)
-		precondition(result == 0, "Failed to lock \(self) with error \(result).")
+		if result != 0 {
+			fatalError("Failed to lock \(self) with error \(result).")
+		}
 	}
 
-	func unlock() {
+	@inline(__always)
+	mutating func unlock() {
 		let result = pthread_mutex_unlock(&mutex)
-		precondition(result == 0, "Failed to unlock \(self) with error \(result).")
+		if result != 0 {
+			fatalError("Failed to unlock \(self) with error \(result).")
+		}
+	}
+}
+
+internal final class PosixThreadMutex: NSLocking {
+	private var mutex = _PosixThreadMutex()
+
+	deinit {
+		mutex.deinitialize()
+	}
+
+	@inline(__always)
+	func lock() {
+		mutex.lock()
+	}
+
+	@inline(__always)
+	func unlock() {
+		mutex.unlock()
 	}
 }
 
 /// An atomic variable.
 public final class Atomic<Value>: AtomicProtocol {
-	private let lock: PosixThreadMutex
+	private var lock: _PosixThreadMutex
 	private var _value: Value
+
+	/// Atomically get or set the value of the variable.
+	public var value: Value {
+		@inline(__always)
+		get {
+			return modify { $0 }
+		}
+
+		@inline(__always)
+		set(newValue) {
+			modify { $0 = newValue }
+		}
+	}
 
 	/// Initialize the variable with the given initial value.
 	/// 
@@ -43,7 +80,11 @@ public final class Atomic<Value>: AtomicProtocol {
 	///   - value: Initial value for `self`.
 	public init(_ value: Value) {
 		_value = value
-		lock = PosixThreadMutex()
+		lock = _PosixThreadMutex()
+	}
+
+	deinit {
+		lock.deinitialize()
 	}
 
 	/// Atomically modifies the variable.
@@ -53,11 +94,12 @@ public final class Atomic<Value>: AtomicProtocol {
 	///
 	/// - returns: The result of the action.
 	@discardableResult
+	@inline(__always)
 	public func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result {
 		lock.lock()
-		defer { lock.unlock() }
-
-		return try action(&_value)
+		let value = try action(&_value)
+		lock.unlock()
+		return value
 	}
 	
 	/// Atomically perform an arbitrary action using the current value of the
@@ -68,11 +110,28 @@ public final class Atomic<Value>: AtomicProtocol {
 	///
 	/// - returns: The result of the action.
 	@discardableResult
+	@inline(__always)
 	public func withValue<Result>(_ action: (Value) throws -> Result) rethrows -> Result {
 		lock.lock()
-		defer { lock.unlock() }
+		let value = try action(_value)
+		lock.unlock()
+		return value
+	}
 
-		return try action(_value)
+	/// Atomically replace the contents of the variable.
+	///
+	/// - parameters:
+	///   - newValue: A new value for the variable.
+	///
+	/// - returns: The old value.
+	@discardableResult
+	@inline(__always)
+	public func swap(_ newValue: Value) -> Value {
+		return modify { (value: inout Value) in
+			let oldValue = value
+			value = newValue
+			return oldValue
+		}
 	}
 }
 
@@ -82,6 +141,19 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	private let lock: NSRecursiveLock
 	private var _value: Value
 	private let didSetObserver: ((Value) -> Void)?
+
+	/// Atomically get or set the value of the variable.
+	public var value: Value {
+		@inline(__always)
+		get {
+			return modify { $0 }
+		}
+
+		@inline(__always)
+		set(newValue) {
+			modify { $0 = newValue }
+		}
+	}
 
 	/// Initialize the variable with the given initial value.
 	/// 
@@ -104,14 +176,13 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	///
 	/// - returns: The result of the action.
 	@discardableResult
+	@inline(__always)
 	func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result {
 		lock.lock()
-		defer {
-			didSetObserver?(_value)
-			lock.unlock()
-		}
-
-		return try action(&_value)
+		let returnValue = try action(&_value)
+		didSetObserver?(_value)
+		lock.unlock()
+		return returnValue
 	}
 	
 	/// Atomically perform an arbitrary action using the current value of the
@@ -122,11 +193,28 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	///
 	/// - returns: The result of the action.
 	@discardableResult
+	@inline(__always)
 	func withValue<Result>(_ action: (Value) throws -> Result) rethrows -> Result {
 		lock.lock()
-		defer { lock.unlock() }
+		let returnValue = try action(_value)
+		lock.unlock()
+		return returnValue
+	}
 
-		return try action(_value)
+	/// Atomically replace the contents of the variable.
+	///
+	/// - parameters:
+	///   - newValue: A new value for the variable.
+	///
+	/// - returns: The old value.
+	@discardableResult
+	@inline(__always)
+	func swap(_ newValue: Value) -> Value {
+		return modify { (value: inout Value) in
+			let oldValue = value
+			value = newValue
+			return oldValue
+		}
 	}
 }
 
@@ -138,32 +226,4 @@ public protocol AtomicProtocol: class {
 
 	@discardableResult
 	func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result
-}
-
-extension AtomicProtocol {	
-	/// Atomically get or set the value of the variable.
-	public var value: Value {
-		get {
-			return withValue { $0 }
-		}
-	
-		set(newValue) {
-			swap(newValue)
-		}
-	}
-
-	/// Atomically replace the contents of the variable.
-	///
-	/// - parameters:
-	///   - newValue: A new value for the variable.
-	///
-	/// - returns: The old value.
-	@discardableResult
-	public func swap(_ newValue: Value) -> Value {
-		return modify { (value: inout Value) in
-			let oldValue = value
-			value = newValue
-			return oldValue
-		}
-	}
 }
