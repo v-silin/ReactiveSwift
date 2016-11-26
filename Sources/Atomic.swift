@@ -9,29 +9,33 @@
 import Foundation
 
 internal struct _PosixThreadMutex {
-	private var mutex = pthread_mutex_t()
+	private let mutex: UnsafeMutablePointer<pthread_mutex_t>
 
 	init() {
-		let result = pthread_mutex_init(&mutex, nil)
+		mutex = UnsafeMutablePointer<pthread_mutex_t>.allocate(capacity: 1)
+		mutex.initialize(to: pthread_mutex_t())
+		let result = pthread_mutex_init(mutex, nil)
 		precondition(result == 0, "Failed to initialize mutex with error \(result).")
 	}
 
-	mutating func deinitialize() {
-		let result = pthread_mutex_destroy(&mutex)
+	func deinitialize() {
+		let result = pthread_mutex_destroy(mutex)
 		precondition(result == 0, "Failed to destroy mutex with error \(result).")
+		mutex.deinitialize()
+		mutex.deallocate(capacity: 1)
 	}
 
 	@inline(__always)
-	mutating func lock() {
-		let result = pthread_mutex_lock(&mutex)
+	func lock() {
+		let result = pthread_mutex_lock(mutex)
 		if result != 0 {
 			fatalError("Failed to lock \(self) with error \(result).")
 		}
 	}
 
 	@inline(__always)
-	mutating func unlock() {
-		let result = pthread_mutex_unlock(&mutex)
+	func unlock() {
+		let result = pthread_mutex_unlock(mutex)
 		if result != 0 {
 			fatalError("Failed to unlock \(self) with error \(result).")
 		}
@@ -39,7 +43,7 @@ internal struct _PosixThreadMutex {
 }
 
 internal final class PosixThreadMutex: NSLocking {
-	private var mutex = _PosixThreadMutex()
+	private let mutex = _PosixThreadMutex()
 
 	deinit {
 		mutex.deinitialize()
@@ -58,7 +62,7 @@ internal final class PosixThreadMutex: NSLocking {
 
 /// An atomic variable.
 public final class Atomic<Value>: AtomicProtocol {
-	private var lock: _PosixThreadMutex
+	private let lock: _PosixThreadMutex
 	private var _value: Value
 
 	/// Atomically get or set the value of the variable.
