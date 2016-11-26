@@ -93,6 +93,8 @@ public final class Atomic<Value>: AtomicProtocol {
 
 	/// Atomically modifies the variable.
 	///
+	/// - note: Throwing in `action` does not revert any changes made.
+	///
 	/// - parameters:
 	///   - action: A closure that takes the current value.
 	///
@@ -105,7 +107,7 @@ public final class Atomic<Value>: AtomicProtocol {
 			let value = try action(&_value)
 			lock.unlock()
 			return value
-		} catch let error {
+		} catch {
 			lock.unlock()
 			throw error
 		}
@@ -126,7 +128,7 @@ public final class Atomic<Value>: AtomicProtocol {
 			let value = try action(_value)
 			lock.unlock()
 			return value
-		} catch let error {
+		} catch {
 			lock.unlock()
 			throw error
 		}
@@ -141,7 +143,7 @@ public final class Atomic<Value>: AtomicProtocol {
 	@discardableResult
 	@inline(__always)
 	public func swap(_ newValue: Value) -> Value {
-		return modify { (value: inout Value) in
+		return modify { value in
 			let oldValue = value
 			value = newValue
 			return oldValue
@@ -185,6 +187,9 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 
 	/// Atomically modifies the variable.
 	///
+	/// - note: Throwing in `action` does not revert any changes made, and the
+	///         `didSetObserver` would be called regardless.
+	///
 	/// - parameters:
 	///   - action: A closure that takes the current value.
 	///
@@ -198,7 +203,8 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 			didSetObserver?(_value)
 			lock.unlock()
 			return returnValue
-		} catch let error {
+		} catch {
+			didSetObserver?(_value)
 			lock.unlock()
 			throw error
 		}
@@ -219,7 +225,7 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 			let returnValue = try action(_value)
 			lock.unlock()
 			return returnValue
-		} catch let error {
+		} catch {
 			lock.unlock()
 			throw error
 		}
@@ -234,7 +240,7 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	@discardableResult
 	@inline(__always)
 	func swap(_ newValue: Value) -> Value {
-		return modify { (value: inout Value) in
+		return modify { value in
 			let oldValue = value
 			value = newValue
 			return oldValue
