@@ -35,9 +35,11 @@ public final class Signal<Value, Error: Swift.Error> {
 	///         Signal itself will remain alive until the observer is released.
 	///
 	/// - parameters:
+	///   - concurrency: The concurrency mode the signal should assume.
+	///                  By default, it is `serialized`.
 	///   - generator: A closure that accepts an implicitly created observer
 	///                that will act as an event emitter for the signal.
-	public init(_ generator: (Observer) -> Disposable?) {
+	public init(_ concurrency: SignalConcurrency = .serialized, _ generator: (Observer) -> Disposable?) {
 		state = Atomic(SignalState())
 
 		/// Holds the final signal state captured by an `interrupted` event. If it
@@ -49,12 +51,42 @@ public final class Signal<Value, Error: Swift.Error> {
 		var terminated = false
 
 		/// Used to ensure that events are serialized during delivery to observers.
-		let sendLock = NSLock()
-		sendLock.name = "org.reactivecocoa.ReactiveSwift.Signal"
+		let sendLock: NSLock?
+
+		switch concurrency {
+		case .contained:
+			sendLock = nil
+
+		case .serialized:
+			sendLock = NSLock()
+			sendLock!.name = "org.reactivecocoa.ReactiveSwift.Signal"
+		}
 
 		let observer = Observer { [weak self] event in
 			guard let signal = self else {
 				return
+			}
+
+			@inline(__always)
+			func sendLockLock() {
+				if let lock = sendLock {
+					lock.lock()
+				}
+			}
+
+			@inline(__always)
+			func sendLockTryLock() -> Bool {
+				if let lock = sendLock {
+					return lock.try()
+				}
+				return true
+			}
+
+			@inline(__always)
+			func sendLockUnlock() {
+				if let lock = sendLock {
+					lock.unlock()
+				}
 			}
 
 			@inline(__always)
@@ -91,11 +123,11 @@ public final class Signal<Value, Error: Swift.Error> {
 					// guaranteed to be blocked.
 					interruptedState = state
 
-					if sendLock.try() {
+					if sendLockTryLock() {
 						if !terminated, let state = interruptedState {
 							interrupt(state.observers)
 						}
-						sendLock.unlock()
+						sendLockUnlock()
 						signal.generatorDisposable?.dispose()
 					}
 				}
@@ -105,7 +137,7 @@ public final class Signal<Value, Error: Swift.Error> {
 				if let observers = (isTerminating ? signal.state.swap(nil)?.observers : signal.state.value?.observers) {
 					var shouldDispose = false
 
-					sendLock.lock()
+					sendLockLock()
 
 					if !terminated {
 						for observer in observers {
@@ -125,14 +157,14 @@ public final class Signal<Value, Error: Swift.Error> {
 						}
 					}
 
-					sendLock.unlock()
+					sendLockUnlock()
 
 					// Based on the implicit memory order, any updates to the
 					// `interruptedState` should always be visible after `sendLock` is
 					// released. So we check it again and handle the interruption if
 					// it has not been taken over.
 					if !shouldDispose && !terminated && !isTerminating, let state = interruptedState {
-						sendLock.lock()
+						sendLockLock()
 
 						// `terminated` before acquring the lock could be a false negative,
 						// since it might race against other concurrent senders until the
@@ -143,7 +175,7 @@ public final class Signal<Value, Error: Swift.Error> {
 							shouldDispose = true
 						}
 
-						sendLock.unlock()
+						sendLockUnlock()
 					}
 
 					if shouldDispose {
@@ -187,13 +219,16 @@ public final class Signal<Value, Error: Swift.Error> {
 	///         retained.
 	///
 	/// - parameters:
+	///   - contained: Indicates if the event emitter passed to `generator` would
+	///                be contained in a serialized routine. By default, it is
+	///                `false`, and should be used with cautions.
 	///   - disposable: An optional disposable to associate with the signal, and
 	///                 to be disposed of when the signal terminates.
 	///
 	/// - returns: A tuple made of signal and observer.
-	public static func pipe(disposable: Disposable? = nil) -> (Signal, Observer) {
+	public static func pipe(_ concurrency: SignalConcurrency = .serialized, disposable: Disposable? = nil) -> (Signal, Observer) {
 		var observer: Observer!
-		let signal = self.init { innerObserver in
+		let signal = self.init(concurrency) { innerObserver in
 			observer = innerObserver
 			return disposable
 		}
@@ -235,6 +270,17 @@ public final class Signal<Value, Error: Swift.Error> {
 			return nil
 		}
 	}
+}
+
+/// The concurrency mode of a `Signal`.
+public enum SignalConcurrency {
+	/// The `Signal` should serialize all the received events.
+	case serialized
+
+	/// The `Signal` may assume the events emitted to it have already been 
+	/// serialized. In other words, the event emitter of the `Signal` is assumed
+	/// to only be called in synchronized routines.
+	case contained
 }
 
 private struct SignalState<Value, Error: Swift.Error> {
@@ -372,7 +418,7 @@ extension SignalProtocol {
 	///
 	/// - returns: A signal that will send new values.
 	public func map<U>(_ transform: @escaping (Value) -> U) -> Signal<U, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			return self.observe { event in
 				observer.action(event.map(transform))
 			}
@@ -387,7 +433,7 @@ extension SignalProtocol {
 	///
 	/// - returns: A signal that will send new type of errors.
 	public func mapError<F>(_ transform: @escaping (Error) -> F) -> Signal<Value, F> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			return self.observe { event in
 				observer.action(event.mapError(transform))
 			}
@@ -403,7 +449,7 @@ extension SignalProtocol {
 	/// - returns: A signal that will send only the values passing the given
 	///            predicate.
 	public func filter(_ predicate: @escaping (Value) -> Bool) -> Signal<Value, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			return self.observe { (event: Event<Value, Error>) -> Void in
 				guard let value = event.value else {
 					observer.action(event)
@@ -440,7 +486,7 @@ extension SignalProtocol {
 	public func take(first count: Int) -> Signal<Value, Error> {
 		precondition(count >= 0)
 
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			if count == 0 {
 				observer.sendCompleted()
 				return nil
@@ -570,7 +616,7 @@ extension SignalProtocol {
 	///            `self` completes, forwards them as a single array and
 	///            complets.
 	public func collect(_ predicate: @escaping (_ values: [Value]) -> Bool) -> Signal<[Value], Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			let state = CollectState<Value>()
 
 			return self.observe { event in
@@ -635,7 +681,7 @@ extension SignalProtocol {
 	///            predicate which matches the values collected and the next
 	///            value.
 	public func collect(_ predicate: @escaping (_ values: [Value], _ value: Value) -> Bool) -> Signal<[Value], Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			let state = CollectState<Value>()
 
 			return self.observe { event in
@@ -668,7 +714,7 @@ extension SignalProtocol {
 	///
 	/// - returns: A signal that will yield `self` values on provided scheduler.
 	public func observe(on scheduler: SchedulerProtocol) -> Signal<Value, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			return self.observe { event in
 				scheduler.schedule {
 					observer.action(event)
@@ -767,7 +813,7 @@ extension SignalProtocol {
 	public func delay(_ interval: TimeInterval, on scheduler: DateSchedulerProtocol) -> Signal<Value, Error> {
 		precondition(interval >= 0)
 
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			return self.observe { event in
 				switch event {
 				case .failed, .interrupted:
@@ -799,7 +845,7 @@ extension SignalProtocol {
 			return signal
 		}
 
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			var skipped = 0
 
 			return self.observe { event in
@@ -824,7 +870,7 @@ extension SignalProtocol {
 	///
 	/// - returns: A signal that sends events as its values.
 	public func materialize() -> Signal<Event<Value, Error>, NoError> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			return self.observe { event in
 				observer.send(value: event)
 
@@ -849,7 +895,7 @@ extension SignalProtocol where Value: EventProtocol, Error == NoError {
 	///
 	/// - returns: A signal that sends values carried by `self` events.
 	public func dematerialize() -> Signal<Value.Value, Value.Error> {
-		return Signal<Value.Value, Value.Error> { observer in
+		return Signal<Value.Value, Value.Error>(.contained) { observer in
 			return self.observe { event in
 				switch event {
 				case let .value(innerEvent):
@@ -893,7 +939,7 @@ extension SignalProtocol {
 		disposed: (() -> Void)? = nil,
 		value: ((Value) -> Void)? = nil
 	) -> Signal<Value, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			let disposable = CompositeDisposable()
 
 			_ = disposed.map(disposable.add)
@@ -1153,7 +1199,7 @@ extension SignalProtocol {
 	/// - returns: A signal that sends accumulated value each time `self` emits
 	///            own value.
 	public func scan<U>(_ initial: U, _ combine: @escaping (U, Value) -> U) -> Signal<U, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			var accumulator = initial
 
 			return self.observe { event in
@@ -1217,7 +1263,7 @@ extension SignalProtocol {
 	///
 	/// - returns: A signal that sends only forwarded values from `self`.
 	public func skip(while predicate: @escaping (Value) -> Bool) -> Signal<Value, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			var shouldSkip = true
 
 			return self.observe { event in
@@ -1280,7 +1326,7 @@ extension SignalProtocol {
 	/// - returns: A signal that receives up to `count` values from `self`
 	///            after `self` completes.
 	public func take(last count: Int) -> Signal<Value, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			var buffer: [Value] = []
 			buffer.reserveCapacity(count)
 
@@ -1319,7 +1365,7 @@ extension SignalProtocol {
 	/// - returns: A signal that sends events until the values sent by `self`
 	///            pass the given `predicate`.
 	public func take(while predicate: @escaping (Value) -> Bool) -> Signal<Value, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			return self.observe { event in
 				if let value = event.value, !predicate(value) {
 					observer.sendCompleted()
@@ -1453,7 +1499,7 @@ extension SignalProtocol {
 	/// - returns: A signal that sends mapped values from `self` if returned
 	///            `Result` is `success`ful, `failed` events otherwise.
 	public func attemptMap<U>(_ operation: @escaping (Value) -> Result<U, Error>) -> Signal<U, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			self.observe { event in
 				switch event {
 				case let .value(value):
@@ -1688,7 +1734,7 @@ extension SignalProtocol {
 	///
 	/// - returns: A signal that sends unique values during its lifetime.
 	public func uniqueValues<Identity: Hashable>(_ transform: @escaping (Value) -> Identity) -> Signal<Value, Error> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			var seenValues: Set<Identity> = []
 			
 			return self
@@ -1964,7 +2010,7 @@ extension SignalProtocol where Error == NoError {
 	///
 	/// - returns: A signal that has an instantiatable `ErrorType`.
 	public func promoteErrors<F: Swift.Error>(_: F.Type) -> Signal<Value, F> {
-		return Signal { observer in
+		return Signal(.contained) { observer in
 			return self.observe { event in
 				switch event {
 				case let .value(value):
