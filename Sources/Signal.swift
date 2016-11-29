@@ -35,10 +35,13 @@ public final class Signal<Value, Error: Swift.Error> {
 	///         Signal itself will remain alive until the observer is released.
 	///
 	/// - parameters:
-	///   - serialization: The serialization the `Signal` should use.
 	///   - generator: A closure that accepts an implicitly created observer
 	///                that will act as an event emitter for the signal.
-	public init(serialization: SignalSerialization = .serialize, _ generator: (Observer) -> Disposable?) {
+	public convenience init(_ generator: (Observer) -> Disposable?) {
+		self.init(serialization: .serialize, generator)
+	}
+
+	internal init(serialization: SignalSerialization, _ generator: (Observer) -> Disposable?) {
 		state = Atomic(SignalState())
 
 		/// Holds the final signal state captured by an `interrupted` event. If it
@@ -207,12 +210,15 @@ public final class Signal<Value, Error: Swift.Error> {
 	///         retained.
 	///
 	/// - parameters:
-	///   - serialization: The serialization the `Signal` should use.
 	///   - disposable: An optional disposable to associate with the signal, and
 	///                 to be disposed of when the signal terminates.
 	///
 	/// - returns: A tuple made of signal and observer.
-	public static func pipe(serialization: SignalSerialization = .serialize, disposable: Disposable? = nil) -> (Signal, Observer) {
+	public static func pipe(disposable: Disposable? = nil) -> (Signal, Observer) {
+		return pipe(serialization: .serialize, disposable: disposable)
+	}
+
+	internal static func pipe(serialization: SignalSerialization, disposable: Disposable? = nil) -> (Signal, Observer) {
 		var observer: Observer!
 		let signal = self.init(serialization: serialization) { innerObserver in
 			observer = innerObserver
@@ -259,7 +265,7 @@ public final class Signal<Value, Error: Swift.Error> {
 }
 
 /// Describes how `Signal` should serialize the events it received.
-public enum SignalSerialization {
+internal enum SignalSerialization {
 	/// The `Signal` should serialize all the received events.
 	case serialize
 
