@@ -586,7 +586,7 @@ public final class MutableProperty<Value>: MutablePropertyProtocol {
 	/// - parameters:
 	///   - initialValue: Starting value for the mutable property.
 	public init(_ initialValue: Value) {
-		(signal, observer) = Signal.pipe(.contained)
+		(signal, observer) = Signal.pipe(serialization: .inherit)
 		token = Lifetime.Token()
 		lifetime = Lifetime(token)
 
