@@ -699,6 +699,9 @@ extension SignalProtocol {
 	///
 	/// - returns: A signal that will yield `self` values on provided scheduler.
 	public func observe(on scheduler: SchedulerProtocol) -> Signal<Value, Error> {
+		// While `observe` is an asynchronous operator, the resulting signal can
+		// inherit the serialization from the scheduler, since all the events
+		// are being forwarded through it.
 		return Signal(serialization: .inherit) { observer in
 			return self.observe { event in
 				scheduler.schedule {
@@ -717,33 +720,27 @@ private final class CombineLatestState<Value> {
 extension SignalProtocol {
 	private func observeWithStates<U>(_ signalState: CombineLatestState<Value>, _ otherState: CombineLatestState<U>, _ lock: NSLock, _ observer: Signal<(), Error>.Observer) -> Disposable? {
 		return self.observe { event in
+			lock.lock()
 			switch event {
 			case let .value(value):
-				lock.lock()
-
 				signalState.latestValue = value
 				if otherState.latestValue != nil {
 					observer.send(value: ())
 				}
 
-				lock.unlock()
-
 			case let .failed(error):
 				observer.send(error: error)
 
 			case .completed:
-				lock.lock()
-
 				signalState.isCompleted = true
 				if otherState.isCompleted {
 					observer.sendCompleted()
 				}
 
-				lock.unlock()
-
 			case .interrupted:
 				observer.sendInterrupted()
 			}
+			lock.unlock()
 		}
 	}
 
@@ -762,7 +759,9 @@ extension SignalProtocol {
 	/// - returns: A signal that will yield a tuple containing values of `self`
 	///            and given signal.
 	public func combineLatest<U>(with other: Signal<U, Error>) -> Signal<(Value, U), Error> {
-		return Signal { observer in
+		// The signal inherits the serialization from the lock, as all the events
+		// emitted happen within the lock's proected section.
+		return Signal(serialization: .inherit) { observer in
 			let lock = NSLock()
 			lock.name = "org.reactivecocoa.ReactiveSwift.combineLatestWith"
 
@@ -798,6 +797,9 @@ extension SignalProtocol {
 	public func delay(_ interval: TimeInterval, on scheduler: DateSchedulerProtocol) -> Signal<Value, Error> {
 		precondition(interval >= 0)
 
+		// While `delay` is an asynchronous operator, the resulting signal can
+		// inherit the serialization from the scheduler, since all the events are
+		// forwarded through it.
 		return Signal(serialization: .inherit) { observer in
 			return self.observe { event in
 				switch event {
@@ -1526,7 +1528,10 @@ extension SignalProtocol {
 	public func throttle(_ interval: TimeInterval, on scheduler: DateSchedulerProtocol) -> Signal<Value, Error> {
 		precondition(interval >= 0)
 
-		return Signal { observer in
+		// While `throttle` is an asynchronous operator, the resulting signal can
+		// inherit the serialization from the scheduler, since all events are being
+		// forwarded through it.
+		return Signal(serialization: .inherit) { observer in
 			let state: Atomic<ThrottleState<Value>> = Atomic(ThrottleState())
 			let schedulerDisposable = SerialDisposable()
 
