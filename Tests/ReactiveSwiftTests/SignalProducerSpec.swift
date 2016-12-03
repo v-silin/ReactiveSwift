@@ -308,6 +308,32 @@ class SignalProducerSpec: QuickSpec {
 			}
 		}
 
+		describe("SignalProducer.attempt throws") {
+			it("should send a successful value then complete") {
+				let operationReturnValue = "OperationValue"
+
+				let signalProducer = SignalProducer
+					.attempt { () throws -> String in
+						operationReturnValue
+					}
+					.mapError { $0.error as NSError }
+
+				expect(signalProducer).to(sendValue(operationReturnValue, sendError: nil, complete: true))
+			}
+
+			it("should send the error") {
+				let operationError = NSError(domain: "com.reactivecocoa.errordomain", code: 4815, userInfo: nil)
+
+				let signalProducer = SignalProducer
+					.attempt { () throws -> String in
+						throw operationError
+					}
+					.mapError { $0.error as NSError }
+
+				expect(signalProducer).to(sendValue(nil, sendError: operationError, complete: false))
+			}
+		}
+
 		describe("startWithSignal") {
 			it("should invoke the closure before any effects or events") {
 				var started = false
