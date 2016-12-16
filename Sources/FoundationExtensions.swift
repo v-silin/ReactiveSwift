@@ -88,7 +88,7 @@ extension Date {
 }
 
 extension DispatchTimeInterval {
-	internal var timeInterval: TimeInterval {
+	public var timeInterval: TimeInterval {
 		switch self {
 		case let .seconds(s):
 			return TimeInterval(s)
