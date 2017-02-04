@@ -223,6 +223,7 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	private let lock: NSRecursiveLock
 	private var _value: Value
 	private let didSetObserver: ((Value) -> Void)?
+	private let didSetQueue: OperationQueue
 
 	/// Atomically get or set the value of the variable.
 	public var value: Value {
@@ -247,6 +248,8 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 		lock = NSRecursiveLock()
 		lock.name = name.map(String.init(describing:))
 		didSetObserver = action
+		didSetQueue = OperationQueue()
+		didSetQueue.maxConcurrentOperationCount = 1
 	}
 
 	/// Atomically modifies the variable.
@@ -259,7 +262,10 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result {
 		lock.lock()
 		defer {
-			didSetObserver?(_value)
+			let _value = self._value
+			didSetQueue.addOperation {
+				self.didSetObserver?(_value)
+			}
 			lock.unlock()
 		}
 
