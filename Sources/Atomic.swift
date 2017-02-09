@@ -8,14 +8,14 @@
 
 import Foundation
 #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
-import MachO
+	import MachO
 #endif
 
 /// Represents a finite state machine that can transit from one state to
 /// another.
 internal protocol AtomicStateProtocol {
 	associatedtype State: RawRepresentable
-
+	
 	/// Try to transition from the expected current state to the specified next
 	/// state.
 	///
@@ -32,9 +32,9 @@ internal protocol AtomicStateProtocol {
 /// - warning: `deinitialize` must be called to dispose of the consumed memory.
 internal struct UnsafeAtomicState<State: RawRepresentable>: AtomicStateProtocol where State.RawValue == Int32 {
 	internal typealias Transition = (expected: State, next: State)
-#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+	#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
 	private let value: UnsafeMutablePointer<Int32>
-
+	
 	/// Create a finite state machine with the specified initial state.
 	///
 	/// - parameters:
@@ -43,13 +43,13 @@ internal struct UnsafeAtomicState<State: RawRepresentable>: AtomicStateProtocol 
 		value = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
 		value.initialize(to: initial.rawValue)
 	}
-
+	
 	/// Deinitialize the finite state machine.
 	internal func deinitialize() {
 		value.deinitialize()
 		value.deallocate(capacity: 1)
 	}
-
+	
 	/// Compare the current state with the specified state.
 	///
 	/// - parameters:
@@ -63,7 +63,7 @@ internal struct UnsafeAtomicState<State: RawRepresentable>: AtomicStateProtocol 
 		                                       expected.rawValue,
 		                                       value)
 	}
-
+	
 	/// Try to transition from the expected current state to the specified next
 	/// state.
 	///
@@ -77,20 +77,20 @@ internal struct UnsafeAtomicState<State: RawRepresentable>: AtomicStateProtocol 
 		                                       next.rawValue,
 		                                       value)
 	}
-#else
+	#else
 	private let value: Atomic<Int32>
-
+	
 	/// Create a finite state machine with the specified initial state.
 	///
 	/// - parameters:
 	///   - initial: The desired initial state.
 	internal init(_ initial: State) {
-		value = Atomic(initial.rawValue)
+	value = Atomic(initial.rawValue)
 	}
-
+	
 	/// Deinitialize the finite state machine.
 	internal func deinitialize() {}
-
+	
 	/// Compare the current state with the specified state.
 	///
 	/// - parameters:
@@ -100,9 +100,9 @@ internal struct UnsafeAtomicState<State: RawRepresentable>: AtomicStateProtocol 
 	///   `true` if the current state matches the expected state. `false`
 	///   otherwise.
 	internal func `is`(_ expected: State) -> Bool {
-		return value.modify { $0 == expected.rawValue }
+	return value.modify { $0 == expected.rawValue }
 	}
-
+	
 	/// Try to transition from the expected current state to the specified next
 	/// state.
 	///
@@ -112,35 +112,35 @@ internal struct UnsafeAtomicState<State: RawRepresentable>: AtomicStateProtocol 
 	/// - returns:
 	///   `true` if the transition succeeds. `false` otherwise.
 	internal func tryTransition(from expected: State, to next: State) -> Bool {
-		return value.modify { value in
-			if value == expected.rawValue {
-				value = next.rawValue
-				return true
-			}
-			return false
-		}
+	return value.modify { value in
+	if value == expected.rawValue {
+	value = next.rawValue
+	return true
 	}
-#endif
+	return false
+	}
+	}
+	#endif
 }
 
 final class PosixThreadMutex: NSLocking {
 	private var mutex = pthread_mutex_t()
-
+	
 	init() {
 		let result = pthread_mutex_init(&mutex, nil)
 		precondition(result == 0, "Failed to initialize mutex with error \(result).")
 	}
-
+	
 	deinit {
 		let result = pthread_mutex_destroy(&mutex)
 		precondition(result == 0, "Failed to destroy mutex with error \(result).")
 	}
-
+	
 	func lock() {
 		let result = pthread_mutex_lock(&mutex)
 		precondition(result == 0, "Failed to lock \(self) with error \(result).")
 	}
-
+	
 	func unlock() {
 		let result = pthread_mutex_unlock(&mutex)
 		precondition(result == 0, "Failed to unlock \(self) with error \(result).")
@@ -151,27 +151,16 @@ final class PosixThreadMutex: NSLocking {
 public final class Atomic<Value>: AtomicProtocol {
 	private let lock: PosixThreadMutex
 	private var _value: Value
-
-	/// Atomically get or set the value of the variable.
-	public var value: Value {
-		get {
-			return withValue { $0 }
-		}
-
-		set(newValue) {
-			swap(newValue)
-		}
-	}
-
+    
 	/// Initialize the variable with the given initial value.
-	/// 
+	///
 	/// - parameters:
 	///   - value: Initial value for `self`.
 	public init(_ value: Value) {
 		_value = value
 		lock = PosixThreadMutex()
 	}
-
+	
 	/// Atomically modifies the variable.
 	///
 	/// - parameters:
@@ -182,7 +171,7 @@ public final class Atomic<Value>: AtomicProtocol {
 	public func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result {
 		lock.lock()
 		defer { lock.unlock() }
-
+		
 		return try action(&_value)
 	}
 	
@@ -197,7 +186,7 @@ public final class Atomic<Value>: AtomicProtocol {
 	public func withValue<Result>(_ action: (Value) throws -> Result) rethrows -> Result {
 		lock.lock()
 		defer { lock.unlock() }
-
+		
 		return try action(_value)
 	}
 
@@ -224,20 +213,9 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	private var _value: Value
 	private let didSetObserver: ((Value) -> Void)?
 	private let didSetQueue: OperationQueue
-
-	/// Atomically get or set the value of the variable.
-	public var value: Value {
-		get {
-			return withValue { $0 }
-		}
-
-		set(newValue) {
-			swap(newValue)
-		}
-	}
-
+    
 	/// Initialize the variable with the given initial value.
-	/// 
+	///
 	/// - parameters:
 	///   - value: Initial value for `self`.
 	///   - name: An optional name used to create the recursive lock.
@@ -251,7 +229,7 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 		didSetQueue = OperationQueue()
 		didSetQueue.maxConcurrentOperationCount = 1
 	}
-
+	
 	/// Atomically modifies the variable.
 	///
 	/// - parameters:
@@ -264,11 +242,15 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 		defer {
 			let _value = self._value
 			didSetQueue.addOperation {
+				#if DEBUG
+					print("DID_SET_OBSERVER \(_value)")
+				#endif
+				
 				self.didSetObserver?(_value)
 			}
 			lock.unlock()
 		}
-
+		
 		return try action(&_value)
 	}
 	
@@ -283,10 +265,35 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	func withValue<Result>(_ action: (Value) throws -> Result) rethrows -> Result {
 		lock.lock()
 		defer { lock.unlock() }
-
+		
 		return try action(_value)
 	}
+    
+}
 
+/// A protocol used to constraint convenience `Atomic` methods and properties.
+public protocol AtomicProtocol: class {
+	associatedtype Value
+	
+	@discardableResult
+	func withValue<Result>(_ action: (Value) throws -> Result) rethrows -> Result
+	
+	@discardableResult
+	func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result
+}
+
+extension AtomicProtocol {
+	/// Atomically get or set the value of the variable.
+	public var value: Value {
+		get {
+			return withValue { $0 }
+		}
+		
+		set(newValue) {
+			swap(newValue)
+		}
+	}
+    
 	/// Atomically replace the contents of the variable.
 	///
 	/// - parameters:
