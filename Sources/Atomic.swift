@@ -227,7 +227,7 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 		lock.name = name.map(String.init(describing:))
 		didSetObserver = action
 		didSetQueue = OperationQueue()
-		didSetQueue.maxConcurrentOperationCount = 1
+		didSetQueue.maxConcurrentOperationCount = OperationQueue.defaultMaxConcurrentOperationCount
 	}
 	
 	/// Atomically modifies the variable.
@@ -241,14 +241,17 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 		lock.lock()
 		defer {
 			let _value = self._value
-			didSetQueue.addOperation {
+			let blockOperation = BlockOperation(block: {
 				#if DEBUG
 					print("DID_SET_OBSERVER \(_value)")
 				#endif
 				
 				self.didSetObserver?(_value)
-			}
+			})
+			
 			lock.unlock()
+			
+			didSetQueue.addOperations([blockOperation], waitUntilFinished: true)
 		}
 		
 		return try action(&_value)
