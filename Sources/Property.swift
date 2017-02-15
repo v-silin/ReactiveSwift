@@ -40,11 +40,12 @@ extension PropertyProtocol {
 /// Represents an observable property that can be mutated directly.
 public protocol MutablePropertyProtocol: PropertyProtocol, BindingTargetProvider, BindingTargetProtocol {
 	/// The current value of the property.
-	var value: Value { get set }
-
-	/// The lifetime of the property.
-	var lifetime: Lifetime { get }
+    var value: Value { get set }
     
+    /// The lifetime of the property.
+    var lifetime: Lifetime { get }
+    
+    @discardableResult
     func setValue(value: Value, start: (() -> ())?, end: (() -> ())?) -> Value
 }
 
