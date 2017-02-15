@@ -166,12 +166,18 @@ public final class Atomic<Value>: AtomicProtocol {
 	/// - parameters:
 	///   - action: A closure that takes the current value.
 	///
-	/// - returns: The result of the action.
-	@discardableResult
-	public func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result {
+    /// - returns: The result of the action.
+    @discardableResult
+    public func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())? = nil, end: (() -> ())? = nil) rethrows -> Result {
+        start?()
+        
 		lock.lock()
-		defer { lock.unlock() }
-		
+		defer {
+            lock.unlock()
+            
+            end?()
+        }
+        
 		return try action(&_value)
 	}
 	
@@ -227,7 +233,7 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 		lock.name = name.map(String.init(describing:))
 		didSetObserver = action
 		didSetQueue = OperationQueue()
-		didSetQueue.maxConcurrentOperationCount = OperationQueue.defaultMaxConcurrentOperationCount
+		didSetQueue.maxConcurrentOperationCount = 1
 	}
 	
 	/// Atomically modifies the variable.
@@ -236,25 +242,33 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	///   - action: A closure that takes the current value.
 	///
 	/// - returns: The result of the action.
-	@discardableResult
-	func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result {
-		lock.lock()
-		defer {
-			let _value = self._value
-			let blockOperation = BlockOperation(block: {
-				#if DEBUG
-					print("DID_SET_OBSERVER \(_value)")
-				#endif
-				
-				self.didSetObserver?(_value)
-			})
-			
-			lock.unlock()
-			
-			didSetQueue.addOperations([blockOperation], waitUntilFinished: true)
-		}
-		
-		return try action(&_value)
+    @discardableResult
+    func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())?, end: (() -> ())?) rethrows -> Result {
+        lock.lock()
+        defer {
+            let _value = self._value
+            
+            if didSetQueue.operationCount >= 1 {
+                print("if didSetQueue.operationCount > 1 { \(didSetQueue.operationCount)")
+                print("if didSetQueue.operationCount > 1 { \(didSetQueue.operationCount)")
+            }
+            
+            didSetQueue.addOperation {
+                start?()
+                
+                #if DEBUG
+                    print("DID_SET_OBSERVER \(_value)")
+                #endif
+                
+                self.didSetObserver?(_value)
+                
+                end?()
+            }
+            
+            lock.unlock()
+        }
+        
+        return try action(&_value)
 	}
 	
 	/// Atomically perform an arbitrary action using the current value of the
@@ -282,7 +296,7 @@ public protocol AtomicProtocol: class {
 	func withValue<Result>(_ action: (Value) throws -> Result) rethrows -> Result
 	
 	@discardableResult
-	func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result
+	func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())?, end: (() -> ())?) rethrows -> Result
 }
 
 extension AtomicProtocol {
@@ -304,11 +318,11 @@ extension AtomicProtocol {
 	///
 	/// - returns: The old value.
 	@discardableResult
-	public func swap(_ newValue: Value) -> Value {
-		return modify { (value: inout Value) in
+    public func swap(_ newValue: Value, start: (() -> ())? = nil, end: (() -> ())? = nil) -> Value {
+		return modify({ (value: inout Value) in
 			let oldValue = value
 			value = newValue
 			return oldValue
-		}
+        }, start: start, end: end)
 	}
 }

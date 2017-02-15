@@ -1906,10 +1906,10 @@ extension SignalProducerProtocol {
 			self
 				.take(during: lifetime)
 				.start { event in
-					let observers: Bag<Signal<Value, Error>.Observer>? = state.modify { state in
+					let observers: Bag<Signal<Value, Error>.Observer>? = state.modify({ state in
 						defer { state.enqueue(event) }
 						return state.observers
-					}
+					})
 					observers?.forEach { $0.action(event) }
 				}
 		}
@@ -1921,17 +1921,17 @@ extension SignalProducerProtocol {
 
 			while true {
 				var result: Result<RemovalToken?, ReplayError<Value>>!
-				state.modify {
+				state.modify({
 					result = $0.observe(observer)
-				}
+				})
 
 				switch result! {
 				case let .success(token):
 					if let token = token {
 						disposable += {
-							state.modify {
+							state.modify({
 								$0.removeObserver(using: token)
-							}
+							})
 						}
 					}
 

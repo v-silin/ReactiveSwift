@@ -375,10 +375,10 @@ extension SignalProtocol where Value: SignalProducerProtocol, Error == Value.Err
 						case .completed, .interrupted:
 							handle?.remove()
 							
-							let shouldStart: Bool = state.modify {
+							let shouldStart: Bool = state.modify({
 								$0.active = nil
 								return !$0.isStarting
-							}
+							})
 
 							if shouldStart {
 								startNextIfNeeded()
@@ -389,23 +389,23 @@ extension SignalProtocol where Value: SignalProducerProtocol, Error == Value.Err
 						}
 					}
 				}
-				state.modify { $0.isStarting = false }
+				state.modify({ $0.isStarting = false })
 			}
 		}
 		
 		return observe { event in
 			switch event {
 			case let .value(value):
-				state.modify { $0.queue.append(value.producer) }
+				state.modify({ $0.queue.append(value.producer) })
 				startNextIfNeeded()
 
 			case let .failed(error):
 				observer.send(error: error)
 
 			case .completed:
-				state.modify { state in
+				state.modify({ state in
 					state.queue.append(SignalProducer.empty.on(completed: observer.sendCompleted))
-				}
+				})
 				startNextIfNeeded()
 				
 			case .interrupted:
@@ -512,10 +512,10 @@ extension SignalProtocol where Value: SignalProducerProtocol, Error == Value.Err
 	fileprivate func observeMerge(_ observer: Observer<Value.Value, Error>, _ disposable: CompositeDisposable) -> Disposable? {
 		let inFlight = Atomic(1)
 		let decrementInFlight = {
-			let shouldComplete: Bool = inFlight.modify {
+			let shouldComplete: Bool = inFlight.modify({
 				$0 -= 1
 				return $0 == 0
-			}
+			})
 
 			if shouldComplete {
 				observer.sendCompleted()
@@ -526,7 +526,7 @@ extension SignalProtocol where Value: SignalProducerProtocol, Error == Value.Err
 			switch event {
 			case let .value(producer):
 				producer.startWithSignal { innerSignal, innerDisposable in
-					inFlight.modify { $0 += 1 }
+					inFlight.modify({ $0 += 1 })
 					let handle = disposable.add(innerDisposable)
 
 					innerSignal.observe { event in
@@ -638,18 +638,18 @@ extension SignalProtocol where Value: SignalProducerProtocol, Error == Value.Err
 			switch event {
 			case let .value(innerProducer):
 				innerProducer.startWithSignal { innerSignal, innerDisposable in
-					state.modify {
+					state.modify({
 						// When we replace the disposable below, this prevents
 						// the generated Interrupted event from doing any work.
 						$0.replacingInnerSignal = true
-					}
+					})
 
 					latestInnerDisposable.inner = innerDisposable
 
-					state.modify {
+					state.modify({
 						$0.replacingInnerSignal = false
 						$0.innerSignalComplete = false
-					}
+					})
 
 					innerSignal.observe { event in
 						switch event {
@@ -657,22 +657,22 @@ extension SignalProtocol where Value: SignalProducerProtocol, Error == Value.Err
 							// If interruption occurred as a result of a new
 							// producer arriving, we don't want to notify our
 							// observer.
-							let shouldComplete: Bool = state.modify { state in
+							let shouldComplete: Bool = state.modify({ state in
 								if !state.replacingInnerSignal {
 									state.innerSignalComplete = true
 								}
 								return !state.replacingInnerSignal && state.outerSignalComplete
-							}
+							})
 
 							if shouldComplete {
 								observer.sendCompleted()
 							}
 
 						case .completed:
-							let shouldComplete: Bool = state.modify {
+							let shouldComplete: Bool = state.modify({
 								$0.innerSignalComplete = true
 								return $0.outerSignalComplete
-							}
+							})
 
 							if shouldComplete {
 								observer.sendCompleted()
@@ -688,10 +688,10 @@ extension SignalProtocol where Value: SignalProducerProtocol, Error == Value.Err
 				observer.send(error: error)
 
 			case .completed:
-				let shouldComplete: Bool = state.modify {
+				let shouldComplete: Bool = state.modify({
 					$0.outerSignalComplete = true
 					return $0.innerSignalComplete
-				}
+				})
 
 				if shouldComplete {
 					observer.sendCompleted()

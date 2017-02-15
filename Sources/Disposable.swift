@@ -141,9 +141,9 @@ public final class CompositeDisposable: Disposable {
 		///         disposables that are no longer needed.
 		public func remove() {
 			if state.tryDispose(), let token = bagToken {
-				_ = disposable?.disposables.modify {
+				_ = disposable?.disposables.modify({
 					$0?.remove(using: token)
-				}
+				})
 				bagToken = nil
 				disposable = nil
 			}
@@ -214,9 +214,9 @@ public final class CompositeDisposable: Disposable {
 			return DisposableHandle.empty
 		}
 
-		let handle: DisposableHandle? = disposables.modify {
+		let handle: DisposableHandle? = disposables.modify({
 			return ($0?.insert(d)).map { DisposableHandle(bagToken: $0, disposable: self) }
-		}
+		})
 
 		if let handle = handle {
 			return handle

@@ -97,9 +97,9 @@ public final class Action<Input, Output, Error: Swift.Error> {
 		property.signal
 			.take(during: state.lifetime)
 			.observeValues { [weak state] newValue in
-				state?.modify {
+				state?.modify({
 					$0.value = newValue
-				}
+				})
 			}
 
 		self.isEnabled = state.map { $0.isEnabled }.skipRepeats()
@@ -148,14 +148,14 @@ public final class Action<Input, Output, Error: Swift.Error> {
 	///            producer.
 	public func apply(_ input: Input) -> SignalProducer<Output, ActionError<Error>> {
 		return SignalProducer { observer, disposable in
-			let startingState = self.state.modify { state -> Any? in
+			let startingState = self.state.modify({ state -> Any? in
 				if state.isEnabled {
 					state.isExecuting = true
 					return state.value
 				} else {
 					return nil
 				}
-			}
+			})
 
 			guard let state = startingState else {
 				observer.send(error: .disabled)
@@ -173,9 +173,9 @@ public final class Action<Input, Output, Error: Swift.Error> {
 			}
 
 			disposable += {
-				self.state.modify {
+				self.state.modify({
 					$0.isExecuting = false
-				}
+				})
 			}
 		}
 	}

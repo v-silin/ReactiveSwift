@@ -1172,18 +1172,18 @@ extension SignalProtocol {
 			disposable += self.observe { event in
 				switch event {
 				case let .value(value):
-					state.modify {
+                    state.modify({
 						$0.latestValue = value
-					}
+					})
 
 				case let .failed(error):
 					observer.send(error: error)
 
 				case .completed:
-					let shouldComplete: Bool = state.modify {
+					let shouldComplete: Bool = state.modify({
 						$0.isSignalCompleted = true
 						return $0.isSamplerCompleted
-					}
+					})
 					
 					if shouldComplete {
 						observer.sendCompleted()
@@ -1202,10 +1202,10 @@ extension SignalProtocol {
 					}
 
 				case .completed:
-					let shouldComplete: Bool = state.modify {
+					let shouldComplete: Bool = state.modify({
 						$0.isSamplerCompleted = true
 						return $0.isSignalCompleted
-					}
+					})
 					
 					if shouldComplete {
 						observer.sendCompleted()
@@ -1649,7 +1649,7 @@ extension SignalProtocol {
 				var tuple: (Value, U)?
 				var isFinished = false
 
-				state.modify { state in
+				state.modify({ state in
 					guard !state.values.left.isEmpty && !state.values.right.isEmpty else {
 						isFinished = state.isFinished
 						return
@@ -1657,7 +1657,7 @@ extension SignalProtocol {
 
 					tuple = (state.values.left.removeFirst(), state.values.right.removeFirst())
 					isFinished = state.isFinished
-				}
+				})
 
 				if let tuple = tuple {
 					observer.send(value: tuple)
@@ -1674,18 +1674,18 @@ extension SignalProtocol {
 			disposable += self.observe { event in
 				switch event {
 				case let .value(value):
-					state.modify {
+					state.modify({
 						$0.values.left.append(value)
-					}
+					})
 					flush()
 
 				case let .failed(error):
 					onFailed(error)
 
 				case .completed:
-					state.modify {
+					state.modify({
 						$0.isCompleted.left = true
-					}
+					})
 					flush()
 
 				case .interrupted:
@@ -1696,18 +1696,18 @@ extension SignalProtocol {
 			disposable += other.observe { event in
 				switch event {
 				case let .value(value):
-					state.modify {
+					state.modify({
 						$0.values.right.append(value)
-					}
+					})
 					flush()
 
 				case let .failed(error):
 					onFailed(error)
 
 				case .completed:
-					state.modify {
+					state.modify({
 						$0.isCompleted.right = true
-					}
+					})
 					flush()
 
 				case .interrupted:
@@ -1765,7 +1765,7 @@ extension SignalProtocol {
 				}
 
 				var scheduleDate: Date!
-				state.modify {
+				state.modify({
 					$0.pendingValue = value
 
 					let proposedScheduleDate: Date
@@ -1783,10 +1783,10 @@ extension SignalProtocol {
 					case .orderedDescending:
 						scheduleDate = proposedScheduleDate
 					}
-				}
+				})
 
 				schedulerDisposable.inner = scheduler.schedule(after: scheduleDate) {
-					let pendingValue: Value? = state.modify { state in
+					let pendingValue: Value? = state.modify({ state in
 						defer {
 							if state.pendingValue != nil {
 								state.pendingValue = nil
@@ -1794,7 +1794,7 @@ extension SignalProtocol {
 							}
 						}
 						return state.pendingValue
-					}
+					})
 					
 					if let pendingValue = pendingValue {
 						observer.send(value: pendingValue)
@@ -1842,7 +1842,7 @@ extension SignalProtocol {
 			disposable += shouldThrottle.producer
 				.skipRepeats()
 				.startWithValues { shouldThrottle in
-					let valueToSend = state.modify { state -> Value? in
+					let valueToSend = state.modify({ state -> Value? in
 						guard !state.isTerminated else { return nil }
 
 						if shouldThrottle {
@@ -1856,7 +1856,7 @@ extension SignalProtocol {
 						}
 
 						return nil
-					}
+					})
 
 					if let value = valueToSend {
 						schedulerDisposable.inner = scheduler.schedule {
@@ -1866,7 +1866,7 @@ extension SignalProtocol {
 				}
 
 			disposable += self.observe { event in
-				let eventToSend = state.modify { state -> Event<Value, Error>? in
+				let eventToSend = state.modify({ state -> Event<Value, Error>? in
 					switch event {
 					case let .value(value):
 						switch state {
@@ -1883,7 +1883,7 @@ extension SignalProtocol {
 						state = .terminated
 						return event
 					}
-				}
+				})
 
 				if let event = eventToSend {
 					schedulerDisposable.inner = scheduler.schedule {

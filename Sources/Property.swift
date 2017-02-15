@@ -44,12 +44,18 @@ public protocol MutablePropertyProtocol: PropertyProtocol, BindingTargetProvider
 
 	/// The lifetime of the property.
 	var lifetime: Lifetime { get }
+    
+    func setValue(value: Value, start: (() -> ())?, end: (() -> ())?) -> Value
 }
 
 /// Default implementation of `BindingTargetProvider` for mutable properties.
 extension MutablePropertyProtocol {
-	public var bindingTarget: BindingTarget<Value> {
-		return BindingTarget(lifetime: lifetime) { [weak self] in self?.value = $0 }
+    public var bindingTarget: BindingTarget<Value> {
+        return BindingTarget(lifetime: lifetime) { [weak self] in self?.value = $0 }
+    }
+    
+	public func consume(_ value: Value) {
+		self.setValue(value: value, start: nil, end: nil)
 	}
 }
 
@@ -617,10 +623,10 @@ public final class MutableProperty<Value>: ComposableMutablePropertyProtocol {
 		get {
 			return atomic.withValue { $0 }
 		}
-
-		set {
-			swap(newValue)
-		}
+        
+        set {
+            swap(newValue)
+        }
 	}
 
 	/// The lifetime of the property.
@@ -662,7 +668,12 @@ public final class MutableProperty<Value>: ComposableMutablePropertyProtocol {
 		atomic = RecursiveAtomic(initialValue,
 		                          name: "org.reactivecocoa.ReactiveSwift.MutableProperty",
 		                          didSet: observer.send(value:))
-	}
+    }
+    
+    @discardableResult
+    public func setValue(value: Value, start: (() -> ())? = nil, end: (() -> ())? = nil) -> Value {
+        return self.swap(value, start: start, end: end)
+    }
 
 	/// Atomically replaces the contents of the variable.
 	///
@@ -671,8 +682,8 @@ public final class MutableProperty<Value>: ComposableMutablePropertyProtocol {
 	///
 	/// - returns: The previous property value.
 	@discardableResult
-	public func swap(_ newValue: Value) -> Value {
-		return atomic.swap(newValue)
+	public func swap(_ newValue: Value, start: (() -> ())? = nil, end: (() -> ())? = nil) -> Value {
+		return atomic.swap(newValue, start: start, end: end)
 	}
 
 	/// Atomically modifies the variable.
@@ -683,8 +694,8 @@ public final class MutableProperty<Value>: ComposableMutablePropertyProtocol {
 	///
 	/// - returns: The result of the action.
 	@discardableResult
-	public func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result {
-		return try atomic.modify(action)
+	public func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())? = nil, end: (() -> ())? = nil) rethrows -> Result {
+        return try atomic.modify(action, start: start, end: end)
 	}
 
 	/// Atomically performs an arbitrary action using the current value of the
@@ -698,7 +709,7 @@ public final class MutableProperty<Value>: ComposableMutablePropertyProtocol {
 	public func withValue<Result>(action: (Value) throws -> Result) rethrows -> Result {
 		return try atomic.withValue(action)
 	}
-
+    
 	deinit {
 		observer.sendCompleted()
 	}
