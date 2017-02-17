@@ -247,12 +247,7 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
         lock.lock()
         defer {
             let _value = self._value
-            
-            if didSetQueue.operationCount >= 1 {
-                print("if didSetQueue.operationCount > 1 { \(didSetQueue.operationCount)")
-                print("if didSetQueue.operationCount > 1 { \(didSetQueue.operationCount)")
-            }
-            
+			
             didSetQueue.addOperation {
                 start?()
                 
