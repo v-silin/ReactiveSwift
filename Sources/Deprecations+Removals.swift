@@ -14,7 +14,7 @@ public typealias BindingSourceProtocol = BindingSource
 @available(*, deprecated, message:"The protocol has been replaced by `BindingTargetProvider`, and will be removed in a future version.")
 public protocol BindingTargetProtocol: class, BindingTargetProvider {
 	var lifetime: Lifetime { get }
-
+	
 	func consume(_ value: Value)
 }
 
@@ -43,12 +43,12 @@ extension BindingTarget {
 	public func consume(_ value: Value) {
 		action(value)
 	}
-
+	
 	@available(*, deprecated, renamed:"init(lifetime:action:)")
 	public init(lifetime: Lifetime, setter: @escaping (Value) -> Void, _ void: Void? = nil) {
 		self.init(lifetime: lifetime, action: setter)
 	}
-
+	
 	@available(*, deprecated, renamed:"init(on:lifetime:action:)")
 	public init(on scheduler: Scheduler, lifetime: Lifetime, setter: @escaping (Value) -> Void, _ void: Void? = nil) {
 		self.init(on: scheduler, lifetime: lifetime, action: setter)
@@ -59,12 +59,13 @@ extension BindingTarget {
 @available(*, deprecated, message:"The protocol has been deprecated, and will be removed in a future version.")
 public protocol AtomicProtocol: class {
 	associatedtype Value
-
+	
 	@discardableResult
 	func withValue<Result>(_ action: (Value) throws -> Result) rethrows -> Result
-
+	
 	@discardableResult
-	func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result
+	func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())?, end: (() -> ())?) rethrows -> Result
+	
 }
 
 extension AtomicProtocol {
@@ -73,12 +74,12 @@ extension AtomicProtocol {
 		get {
 			return withValue { $0 }
 		}
-
+		
 		set(newValue) {
 			swap(newValue)
 		}
 	}
-
+	
 	/// Atomically replace the contents of the variable.
 	///
 	/// - parameters:
@@ -86,12 +87,12 @@ extension AtomicProtocol {
 	///
 	/// - returns: The old value.
 	@discardableResult
-	public func swap(_ newValue: Value) -> Value {
-		return modify { (value: inout Value) in
+	public func swap(_ newValue: Value, start: (() -> ())? = nil, end: (() -> ())? = nil) -> Value {
+		return modify({ (value: inout Value) in
 			let oldValue = value
 			value = newValue
 			return oldValue
-		}
+		}, start: start, end: end)
 	}
 }
 
@@ -162,7 +163,7 @@ extension ScopedDisposable {
 extension ActionProtocol {
 	@available(*, unavailable, renamed:"isEnabled")
 	public var enabled: Bool { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"isExecuting")
 	public var executing: Bool { fatalError() }
 }
@@ -172,13 +173,13 @@ extension ActionProtocol {
 extension Event {
 	@available(*, unavailable, renamed:"value")
 	public static var Next: Event<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"failed")
 	public static var Failed: Event<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"completed")
 	public static var Completed: Event<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"interrupted")
 	public static var Interrupted: Event<Value, Error> { fatalError() }
 }
@@ -186,7 +187,7 @@ extension Event {
 extension ActionError {
 	@available(*, unavailable, renamed:"producerFailed")
 	public static var ProducerError: ActionError { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"disabled")
 	public static var NotEnabled: ActionError { fatalError() }
 }
@@ -194,10 +195,10 @@ extension ActionError {
 extension FlattenStrategy {
 	@available(*, unavailable, renamed:"latest")
 	public static var Latest: FlattenStrategy { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"concat")
 	public static var Concat: FlattenStrategy { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"merge")
 	public static var Merge: FlattenStrategy { fatalError() }
 }
@@ -205,19 +206,19 @@ extension FlattenStrategy {
 extension LoggingEvent.Signal {
 	@available(*, unavailable, renamed:"next")
 	public static var Next: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"completed")
 	public static var Completed: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"failed")
 	public static var Failed: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"terminated")
 	public static var Terminated: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"disposed")
 	public static var Disposed: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"interrupted")
 	public static var Interrupted: LoggingEvent.Signal { fatalError() }
 }
@@ -225,22 +226,22 @@ extension LoggingEvent.Signal {
 extension LoggingEvent.SignalProducer {
 	@available(*, unavailable, renamed:"started")
 	public static var Started: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"next")
 	public static var Next: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"completed")
 	public static var Completed: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"failed")
 	public static var Failed: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"terminated")
 	public static var Terminated: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"disposed")
 	public static var Disposed: LoggingEvent.Signal { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"interrupted")
 	public static var Interrupted: LoggingEvent.Signal { fatalError() }
 }
@@ -278,40 +279,40 @@ extension ObserverProtocol {
 extension SignalProtocol {
 	@available(*, unavailable, renamed:"take(first:)")
 	public func take(_ count: Int) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(last:)")
 	public func takeLast(_ count: Int) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"skip(first:)")
 	public func skip(_ count: Int) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"observe(on:)")
 	public func observeOn(_ scheduler: Scheduler) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"combineLatest(with:)")
 	public func combineLatestWith<S: SignalProtocol>(_ otherSignal: S) -> Signal<(Value, S.Value), Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"zip(with:)")
 	public func zipWith<S: SignalProtocol>(_ otherSignal: S) -> Signal<(Value, S.Value), Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(until:)")
 	public func takeUntil(_ trigger: Signal<(), NoError>) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(untilReplacement:)")
 	public func takeUntilReplacement(_ replacement: Signal<Value, Error>) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"skip(until:)")
 	public func skipUntil(_ trigger: Signal<(), NoError>) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"skip(while:)")
 	public func skipWhile(_ predicate: (Value) -> Bool) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(while:)")
 	public func takeWhile(_ predicate: (Value) -> Bool) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"timeout(after:raising:on:)")
 	public func timeoutWithError(_ error: Error, afterInterval: TimeInterval, onScheduler: DateScheduler) -> Signal<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, message: "This Signal may emit errors which must be handled explicitly, or observed using `observeResult(_:)`")
 	public func observeNext(_ next: (Value) -> Void) -> Disposable? { fatalError() }
 }
@@ -336,64 +337,64 @@ extension SignalProtocol where Value: Sequence {
 extension SignalProducerProtocol {
 	@available(*, unavailable, renamed:"take(first:)")
 	public func take(_ count: Int) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(last:)")
 	public func takeLast(_ count: Int) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"skip(first:)")
 	public func skip(_ count: Int) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"retry(upTo:)")
 	public func retry(_ count: Int) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"observe(on:)")
 	public func observeOn(_ scheduler: Scheduler) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"start(on:)")
 	public func startOn(_ scheduler: Scheduler) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"combineLatest(with:)")
 	public func combineLatestWith<U>(_ otherProducer: SignalProducer<U, Error>) -> SignalProducer<(Value, U), Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"combineLatest(with:)")
 	public func combineLatestWith<U>(_ otherSignal: Signal<U, Error>) -> SignalProducer<(Value, U), Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"zip(with:)")
 	public func zipWith<U>(_ otherProducer: SignalProducer<U, Error>) -> SignalProducer<(Value, U), Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"zip(with:)")
 	public func zipWith<U>(_ otherSignal: Signal<U, Error>) -> SignalProducer<(Value, U), Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(until:)")
 	public func takeUntil(_ trigger: Signal<(), NoError>) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(until:)")
 	public func takeUntil(_ trigger: SignalProducer<(), NoError>) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(untilReplacement:)")
 	public func takeUntilReplacement(_ replacement: Signal<Value, Error>) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(untilReplacement:)")
 	public func takeUntilReplacement(_ replacement: SignalProducer<Value, Error>) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"skip(until:)")
 	public func skipUntil(_ trigger: Signal<(), NoError>) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"skip(until:)")
 	public func skipUntil(_ trigger: SignalProducer<(), NoError>) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"skip(while:)")
 	public func skipWhile(_ predicate: (Value) -> Bool) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"take(while:)")
 	public func takeWhile(_ predicate: (Value) -> Bool) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"timeout(after:raising:on:)")
 	public func timeoutWithError(_ error: Error, afterInterval: TimeInterval, onScheduler: DateScheduler) -> SignalProducer<Value, Error> { fatalError() }
-
+	
 	@available(*, unavailable, message:"This SignalProducer may emit errors which must be handled explicitly, or observed using `startWithResult(_:)`.")
 	public func startWithNext(_ next: (Value) -> Void) -> Disposable { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"repeat(_:)")
 	public func times(_ count: Int) -> SignalProducer<Value, Error> { fatalError() }
 }
@@ -418,10 +419,10 @@ extension SignalProducerProtocol where Value: Sequence {
 extension SignalProducer {
 	@available(*, unavailable, message:"Use properties instead. `buffer(_:)` is removed in RAC 5.0.")
 	public static func buffer(_ capacity: Int) -> (SignalProducer, Signal<Value, Error>.Observer) { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"init(_:)")
 	public init<S: SignalProtocol>(signal: S) where S.Value == Value, S.Error == Error { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"init(_:)")
 	public init<S: Sequence>(values: S) where S.Iterator.Element == Value { fatalError() }
 }
@@ -429,7 +430,7 @@ extension SignalProducer {
 extension PropertyProtocol {
 	@available(*, unavailable, renamed:"combineLatest(with:)")
 	public func combineLatestWith<P: PropertyProtocol>(_ otherProperty: P) -> Property<(Value, P.Value)> { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"zip(with:)")
 	public func zipWith<P: PropertyProtocol>(_ otherProperty: P) -> Property<(Value, P.Value)> { fatalError() }
 }
@@ -437,7 +438,7 @@ extension PropertyProtocol {
 extension Property {
 	@available(*, unavailable, renamed:"Property(initial:then:)")
 	public convenience init(initialValue: Value, producer: SignalProducer<Value, NoError>) { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"Property(initial:then:)")
 	public convenience init(initialValue: Value, signal: Signal<Value, NoError>) { fatalError() }
 }
@@ -445,13 +446,13 @@ extension Property {
 extension DateScheduler {
 	@available(*, unavailable, renamed:"schedule(after:action:)")
 	func scheduleAfter(date: Date, _ action: () -> Void) -> Disposable? { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"schedule(after:interval:leeway:)")
 	func scheduleAfter(date: Date, repeatingEvery: TimeInterval, withLeeway: TimeInterval, action: () -> Void) -> Disposable? { fatalError() }
-
+	
 	@available(*, unavailable, message:"schedule(after:interval:leeway:action:) now uses DispatchTimeInterval")
 	func schedule(after date: Date, interval: TimeInterval, leeway: TimeInterval, action: @escaping () -> Void) -> Disposable? { fatalError() }
-
+	
 	@available(*, unavailable, message:"schedule(after:interval:action:) now uses DispatchTimeInterval")
 	public func schedule(after date: Date, interval: TimeInterval, action: @escaping () -> Void) -> Disposable? { fatalError() }
 }
@@ -459,13 +460,13 @@ extension DateScheduler {
 extension TestScheduler {
 	@available(*, unavailable, renamed:"advance(by:)")
 	public func advanceByInterval(_ interval: TimeInterval) { fatalError() }
-
+	
 	@available(*, unavailable, renamed:"advance(to:)")
 	public func advanceToDate(_ date: Date) { fatalError() }
-
+	
 	@available(*, unavailable, message:"advance(by:) now uses DispatchTimeInterval")
 	public func advance(by interval: TimeInterval) { fatalError() }
-
+	
 	@available(*, unavailable, message:"rewind(by:) now uses DispatchTimeInterval")
 	public func rewind(by interval: TimeInterval) { fatalError() }
 }

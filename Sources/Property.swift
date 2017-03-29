@@ -54,10 +54,6 @@ extension MutablePropertyProtocol {
     public var bindingTarget: BindingTarget<Value> {
         return BindingTarget(lifetime: lifetime) { [weak self] in self?.value = $0 }
     }
-    
-	public func consume(_ value: Value) {
-		self.setValue(value: value, start: nil, end: nil)
-	}
 }
 
 /// Represents a mutable property that can be safety composed by exposing its
@@ -79,7 +75,7 @@ public protocol ComposableMutablePropertyProtocol: MutablePropertyProtocol {
 	///             property value.
 	///
 	/// - returns: The result of the action.
-	func modify<Result>(_ action: (inout Value) throws -> Result) rethrows -> Result
+	func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())?, end: (() -> ())?) rethrows -> Result
 }
 
 // Property operators.
@@ -612,6 +608,7 @@ public final class Property<Value>: PropertyProtocol {
 ///
 /// Instances of this class are thread-safe.
 public final class MutableProperty<Value>: ComposableMutablePropertyProtocol {
+	
 	private let token: Lifetime.Token
 	private let observer: Signal<Value, NoError>.Observer
 	private let atomic: RecursiveAtomic<Value>

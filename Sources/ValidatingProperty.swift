@@ -19,6 +19,7 @@ import Result
 /// outer.result.value        // `.invalid("🎃", .outerInvalid)`
 /// ```
 public final class ValidatingProperty<Value, ValidationError: Swift.Error>: MutablePropertyProtocol {
+
 	private let getter: () -> Value
 	private let setter: (Value) -> Void
 
@@ -81,10 +82,10 @@ public final class ValidatingProperty<Value, ValidationError: Swift.Error>: Muta
 				// Acquire the lock of `inner` to ensure no modification happens until
 				// the validation logic here completes.
 				inner.withValue { _ in
-					let writebackValue: Value? = mutableResult.modify { result in
+					let writebackValue: Value? = mutableResult.modify({ result in
 						result = ValidationResult(input, validator(input))
 						return result.value
-					}
+					})
 
 					if let value = writebackValue {
 						isSettingInnerValue = true
@@ -254,6 +255,18 @@ public final class ValidatingProperty<Value, ValidationError: Swift.Error>: Muta
 				}
 			}
 	}
+	
+	@discardableResult
+	public func setValue(value: Value, start: (() -> ())?, end: (() -> ())?) -> Value {
+		start?()
+		
+		setter(value)
+		
+		end?()
+		
+		return getter()
+	}
+	
 }
 
 /// Represents a decision of a validator of a validating property made on a

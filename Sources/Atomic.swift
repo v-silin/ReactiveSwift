@@ -151,7 +151,18 @@ final class PosixThreadMutex: NSLocking {
 public final class Atomic<Value>: AtomicProtocol {
 	private let lock: PosixThreadMutex
 	private var _value: Value
-    
+	
+	/// Atomically get or set the value of the variable.
+	public var value: Value {
+		get {
+			return withValue { $0 }
+		}
+		
+		set(newValue) {
+			swap(newValue)
+		}
+	}
+	
 	/// Initialize the variable with the given initial value.
 	///
 	/// - parameters:
@@ -166,18 +177,18 @@ public final class Atomic<Value>: AtomicProtocol {
 	/// - parameters:
 	///   - action: A closure that takes the current value.
 	///
-    /// - returns: The result of the action.
-    @discardableResult
-    public func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())? = nil, end: (() -> ())? = nil) rethrows -> Result {
-        start?()
-        
+	/// - returns: The result of the action.
+	@discardableResult
+	public func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())? = nil, end: (() -> ())? = nil) rethrows -> Result {
+		start?()
+		
 		lock.lock()
 		defer {
-            lock.unlock()
-            
-            end?()
-        }
-        
+			lock.unlock()
+			
+			end?()
+		}
+		
 		return try action(&_value)
 	}
 	
@@ -195,7 +206,7 @@ public final class Atomic<Value>: AtomicProtocol {
 		
 		return try action(_value)
 	}
-
+	
 	/// Atomically replace the contents of the variable.
 	///
 	/// - parameters:
@@ -204,11 +215,11 @@ public final class Atomic<Value>: AtomicProtocol {
 	/// - returns: The old value.
 	@discardableResult
 	public func swap(_ newValue: Value) -> Value {
-		return modify { (value: inout Value) in
+		return modify({ (value: inout Value) in
 			let oldValue = value
 			value = newValue
 			return oldValue
-		}
+		})
 	}
 }
 
@@ -219,7 +230,18 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	private var _value: Value
 	private let didSetObserver: ((Value) -> Void)?
 	private let didSetQueue: OperationQueue
-    
+	
+	/// Atomically get or set the value of the variable.
+	public var value: Value {
+		get {
+			return withValue { $0 }
+		}
+		
+		set(newValue) {
+			swap(newValue)
+		}
+	}
+	
 	/// Initialize the variable with the given initial value.
 	///
 	/// - parameters:
@@ -242,28 +264,28 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 	///   - action: A closure that takes the current value.
 	///
 	/// - returns: The result of the action.
-    @discardableResult
-    func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())?, end: (() -> ())?) rethrows -> Result {
-        lock.lock()
-        defer {
-            let _value = self._value
+	@discardableResult
+	func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())?, end: (() -> ())?) rethrows -> Result {
+		lock.lock()
+		defer {
+			let _value = self._value
 			
-            didSetQueue.addOperation {
-                start?()
-                
-                #if DEBUG
-                    print("DID_SET_OBSERVER \(_value)")
-                #endif
-                
-                self.didSetObserver?(_value)
-                
-                end?()
-            }
-            
-            lock.unlock()
-        }
-        
-        return try action(&_value)
+			didSetQueue.addOperation {
+				start?()
+				
+				#if DEBUG
+					print("DID_SET_OBSERVER \(_value)")
+				#endif
+				
+				self.didSetObserver?(_value)
+				
+				end?()
+			}
+			
+			lock.unlock()
+		}
+		
+		return try action(&_value)
 	}
 	
 	/// Atomically perform an arbitrary action using the current value of the
@@ -280,44 +302,5 @@ internal final class RecursiveAtomic<Value>: AtomicProtocol {
 		
 		return try action(_value)
 	}
-    
-}
-
-/// A protocol used to constraint convenience `Atomic` methods and properties.
-public protocol AtomicProtocol: class {
-	associatedtype Value
 	
-	@discardableResult
-	func withValue<Result>(_ action: (Value) throws -> Result) rethrows -> Result
-	
-	@discardableResult
-	func modify<Result>(_ action: (inout Value) throws -> Result, start: (() -> ())?, end: (() -> ())?) rethrows -> Result
-}
-
-extension AtomicProtocol {
-	/// Atomically get or set the value of the variable.
-	public var value: Value {
-		get {
-			return withValue { $0 }
-		}
-		
-		set(newValue) {
-			swap(newValue)
-		}
-	}
-    
-	/// Atomically replace the contents of the variable.
-	///
-	/// - parameters:
-	///   - newValue: A new value for the variable.
-	///
-	/// - returns: The old value.
-	@discardableResult
-    public func swap(_ newValue: Value, start: (() -> ())? = nil, end: (() -> ())? = nil) -> Value {
-		return modify({ (value: inout Value) in
-			let oldValue = value
-			value = newValue
-			return oldValue
-        }, start: start, end: end)
-	}
 }
